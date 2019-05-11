@@ -1,0 +1,57 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build (debug)",
+            "type": "shell",
+            "command": "mbed compile --profile mbed-os/tools/profiles/debug.json",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation":"absolute",
+                "pattern": {
+                    "regexp": "^(\\[ERROR\\])*\\s*(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 2,
+                    "line": 3,
+                    "column": 4,
+                    "severity": 5,
+                    "message": 6
+                }
+            }
+        },
+        {
+            "label": "Build (release)",
+            "type": "shell",
+            "command": "mbed compile --profile mbed-os/tools/profiles/release.json",
+            "problemMatcher": []
+        },
+        {
+            "label": "Rebuild (debug)",
+            "type": "shell",
+            "command": "mbed compile --profile mbed-os/tools/profiles/debug.json -c",
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation":"absolute",
+                "pattern": {
+                    "regexp": "^(\\[ERROR\\])*\\s*(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 2,
+                    "line": 3,
+                    "column": 4,
+                    "severity": 5,
+                    "message": 6
+                }
+            }
+        },
+        {
+            "label": "Rebuild (release)",
+            "type": "shell",
+            "command": "mbed compile --profile mbed-os/tools/profiles/release.json -c",
+            "problemMatcher": []
+        }
+    ]
+}

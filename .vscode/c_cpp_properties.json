@@ -1,0 +1,29 @@
+{
+    "configurations": [
+        {
+            "name": "mbedos",
+            "includePath": [
+                "${workspaceRoot}",
+                "${workspaceRoot}/mbed-os",
+                "${workspaceRoot}/mbed-os/drivers",
+                "${workspaceRoot}/mbed-os/hal",
+                "${workspaceRoot}/mbed-os/rtos",
+                "C:\\GNU Tools ARM Embedded\\6 2017-q2-update\\arm-none-eabi\\include",
+                "C:\\GNU Tools ARM Embedded\\6 2017-q2-update\\arm-none-eabi\\include\\c++\\6.3.1",
+                "C:\\GNU Tools ARM Embedded\\6 2017-q2-update\\arm-none-eabi\\include\\c++\\6.3.1\\bits"
+            ],
+            "defines": [],
+            "intelliSenseMode": "clang-x64",
+            "browse": {
+                "path": [
+                    "${workspaceRoot}"
+                ],
+                "limitSymbolsToIncludedHeaders": false,
+                "databaseFilename": ""
+            },
+            "cStandard": "c11",
+            "cppStandard": "c++11"
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,23 @@
+{
+    "config": {
+        "wifi-ssid": {
+            "help": "WiFi SSID",
+            "value": "\"TP-LINK_TRIFIDO_EXT\""
+        },
+        "wifi-password": {
+            "help": "WiFi Password",
+            "value": "\"caccamoscia\""
+        }
+    },
+    "target_overrides": {
+        "*": {
+            "platform.stdio-convert-newlines": true,
+            "esp8266.provide-default" : true
+        },
+        "NUCLEO_F446RE": {
+            "esp8266.tx": "PA_0",
+            "esp8266.rx": "PA_1",
+            "esp8266.rst": "PC_14"
+        }
+    }
+}

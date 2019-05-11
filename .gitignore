@@ -1,0 +1,10 @@
+
+\.vscode/ipch/
+
+BUILD/
+
+mbed_settings\.py
+
+mbed_settings\.pyc
+
+mbed-os/
