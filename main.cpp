@@ -1,112 +1,161 @@
-/* WiFi Example
- * Copyright (c) 2016 ARM Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 #include "mbed.h"
 
+#include "SWO.h"
+
+// buffer sizes for socket-related operations (read/write)
+#define SOCKET_SEND_BUFFER_SIZE 32
+#define SOCKET_RECEIVE_BUFFER_SIZE 32
+
+// host, port of (sample) TCP server/listener
+#define TCP_SERVER_ADDRESS "broker.mqtt.it"
+#define TCP_SERVER_PORT 8888
+
+SWO_Channel swo("channel");
+
+static DigitalOut led1(LED1, false);
+
+static InterruptIn btn(BUTTON1);
+
+// reference to "WiFiInterface" object that will provide for network-related operation (connect, read/write, disconnect)
 WiFiInterface *wifi;
 
-const char *sec2str(nsapi_security_t sec)
+// Thread/EventQueue pair that will manage network operations (EventQueue ensures that "atomic" operations will not be interrupted until completion)
+static Thread s_thread_manage_network;
+static EventQueue s_eq_manage_network;
+
+static uint32_t counter=0;
+char sbuffer[SOCKET_SEND_BUFFER_SIZE];
+char rbuffer[SOCKET_RECEIVE_BUFFER_SIZE];
+
+// set of states for a simple finite-state-machine whose main purpose is to keep network connection "as much open as possible" (automatic reconnect)  
+typedef enum _ConnectionState
 {
-    switch (sec) {
-        case NSAPI_SECURITY_NONE:
-            return "None";
-        case NSAPI_SECURITY_WEP:
-            return "WEP";
-        case NSAPI_SECURITY_WPA:
-            return "WPA";
-        case NSAPI_SECURITY_WPA2:
-            return "WPA2";
-        case NSAPI_SECURITY_WPA_WPA2:
-            return "WPA/WPA2";
-        case NSAPI_SECURITY_UNKNOWN:
-        default:
-            return "Unknown";
+    NETWORK_STATE_DISCONNECTED,
+    NETWORK_STATE_CONNECTED
+} ConnectionState;
+
+// current state
+static ConnectionState s_connectionState=NETWORK_STATE_DISCONNECTED;
+
+// this callback (scheduled every 5 secs) implements network reconnect policy
+void event_proc_manage_network_connection()
+{
+    if(s_connectionState==NETWORK_STATE_CONNECTED) return;
+
+    swo.printf("> Initializing Network...\n\n");
+
+    wifi = WiFiInterface::get_default_instance();
+
+    if (!wifi) {
+        swo.printf("ERROR: No WiFiInterface found.\n");
+        return;
     }
+
+    swo.printf("\nConnecting to %s...\n", MBED_CONF_APP_WIFI_SSID);
+    int ret = wifi->connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
+    if (ret != 0) {
+        swo.printf("\nConnection error: %d\n", ret);
+        return;
+    }
+
+    swo.printf("> ...connection SUCCEEDED\n\n");
+    swo.printf("MAC: %s\n", wifi->get_mac_address());
+    swo.printf("IP: %s\n", wifi->get_ip_address());
+    swo.printf("Netmask: %s\n", wifi->get_netmask());
+    swo.printf("Gateway: %s\n", wifi->get_gateway());
+    swo.printf("RSSI: %d\n\n", wifi->get_rssi());
+
+    s_connectionState=NETWORK_STATE_CONNECTED;
 }
 
-int scan_demo(WiFiInterface *wifi)
+// this callback (scheduled every second) actually implement a request+reply transaction sample
+void event_proc_send_and_receive_data(const char* message_type)
 {
-    WiFiAccessPoint *ap;
+    if(s_connectionState!=NETWORK_STATE_CONNECTED) return;
 
-    printf("Scan:\n");
+    TCPSocket socket;
+    nsapi_error_t socket_operation_return_value;
 
-    int count = wifi->scan(NULL,0);
+    // step 1/2: request (open, connect, send...close and return on error)
+    sprintf(sbuffer, "%s %lu\r", message_type, ++counter);
+    nsapi_size_t size = strlen(sbuffer);
 
-    if (count <= 0) {
-        printf("scan() failed with return value: %d\n", count);
-        return 0;
+    swo.printf("Sending %d bytes to %s:%d...\n", size, TCP_SERVER_ADDRESS, TCP_SERVER_PORT);
+
+    socket.set_timeout(3000);
+    socket.open(wifi);
+    
+    socket_operation_return_value = socket.connect(TCP_SERVER_ADDRESS, TCP_SERVER_PORT);
+    
+    if(socket_operation_return_value != 0)
+    {
+        swo.printf("...error in socket.connect(): %d\n", socket_operation_return_value);
+        socket.close();
+        wifi->disconnect();
+        s_connectionState=NETWORK_STATE_DISCONNECTED;
+        return;
     }
 
-    /* Limit number of network arbitrary to 15 */
-    count = count < 15 ? count : 15;
+    socket_operation_return_value = 0;
+    
+    while(size)
+    {
+        socket_operation_return_value = socket.send(sbuffer + socket_operation_return_value, size);
 
-    ap = new WiFiAccessPoint[count];
-    count = wifi->scan(ap, count);
-
-    if (count <= 0) {
-        printf("scan() failed with return value: %d\n", count);
-        return 0;
+        if (socket_operation_return_value < 0)
+        {
+            swo.printf("...error sending data: %d\n", socket_operation_return_value);
+            socket.close();
+            return;
+        }
+        else
+        {
+            size -= socket_operation_return_value;
+        }
     }
 
-    for (int i = 0; i < count; i++) {
-        printf("Network: %s secured: %s BSSID: %hhX:%hhX:%hhX:%hhx:%hhx:%hhx RSSI: %hhd Ch: %hhd\n", ap[i].get_ssid(),
-               sec2str(ap[i].get_security()), ap[i].get_bssid()[0], ap[i].get_bssid()[1], ap[i].get_bssid()[2],
-               ap[i].get_bssid()[3], ap[i].get_bssid()[4], ap[i].get_bssid()[5], ap[i].get_rssi(), ap[i].get_channel());
-    }
-    printf("%d networks available.\n", count);
+    sbuffer[strlen(sbuffer)-1]='\0';
 
-    delete[] ap;
-    return count;
+    swo.printf("...sent '%s'\n", sbuffer);
+
+    // step 2/2: receive reply (receive, close...close and return on error)
+    socket_operation_return_value = socket.recv(rbuffer, sizeof rbuffer);
+    
+    if (socket_operation_return_value < 0)
+    {
+        swo.printf("...error receiving data: %d\n", socket_operation_return_value);
+    }
+    else
+    {
+        // clear CR/LF chars for a cleaner debug terminal output
+        rbuffer[socket_operation_return_value]='\0';
+        if(rbuffer[socket_operation_return_value-1]=='\n' || rbuffer[socket_operation_return_value-1]=='\r') rbuffer[socket_operation_return_value-1]='\0';
+        if(rbuffer[socket_operation_return_value-2]=='\n' || rbuffer[socket_operation_return_value-2]=='\r') rbuffer[socket_operation_return_value-2]='\0';
+
+        swo.printf("...received: '%s'\n", rbuffer);
+    }
+
+    socket.close();
+
+    // id led is toggling everything is working as expected
+    led1.write(!led1.read());
+}
+
+// in case of an hardware interrupt, the isr routine schedules (on EventQueue dedicated to network operations)
+// a call to event_proc_send_and_receive_data(), but with an argument ("btn") different from one used in periodic request+reply ("test", see below)
+void btn_interrupt_handler()
+{
+    s_eq_manage_network.call(event_proc_send_and_receive_data, "btn");
 }
 
 int main()
 {
-    printf("WiFi example\n");
+    swo.printf(" -------- WIFI sample started --------\n\n");
+    
+    s_eq_manage_network.call_every(5000, event_proc_manage_network_connection);
+    s_eq_manage_network.call_every(1000, event_proc_send_and_receive_data, "test");
 
-#ifdef MBED_MAJOR_VERSION
-    printf("Mbed OS version %d.%d.%d\n\n", MBED_MAJOR_VERSION, MBED_MINOR_VERSION, MBED_PATCH_VERSION);
-#endif
+    btn.fall(&btn_interrupt_handler);
 
-    wifi = WiFiInterface::get_default_instance();
-    if (!wifi) {
-        printf("ERROR: No WiFiInterface found.\n");
-        return -1;
-    }
-
-    int count = scan_demo(wifi);
-    if (count == 0) {
-        printf("No WIFI APs found - can't continue further.\n");
-        return -1;
-    }
-
-    printf("\nConnecting to %s...\n", MBED_CONF_APP_WIFI_SSID);
-    int ret = wifi->connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
-    if (ret != 0) {
-        printf("\nConnection error: %d\n", ret);
-        return -1;
-    }
-
-    printf("Success\n\n");
-    printf("MAC: %s\n", wifi->get_mac_address());
-    printf("IP: %s\n", wifi->get_ip_address());
-    printf("Netmask: %s\n", wifi->get_netmask());
-    printf("Gateway: %s\n", wifi->get_gateway());
-    printf("RSSI: %d\n\n", wifi->get_rssi());
-
-    wifi->disconnect();
-
-    printf("\nDone\n");
+    s_thread_manage_network.start(callback(&s_eq_manage_network, &EventQueue::dispatch_forever));
 }

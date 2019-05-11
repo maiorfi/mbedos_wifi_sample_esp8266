@@ -16,8 +16,7 @@
         },
         "NUCLEO_F446RE": {
             "esp8266.tx": "PA_0",
-            "esp8266.rx": "PA_1",
-            "esp8266.rst": "PC_14"
+            "esp8266.rx": "PA_1"
         }
     }
 }
